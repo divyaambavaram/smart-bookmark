@@ -1,89 +1,124 @@
-"use client"; // needed in Next.js 14 for client components
+'use client'
 
-import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient"; // adjust path if needed
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
 
 interface Bookmark {
-  id: number;
-  title: string;
-  url: string;
-  user_id: string;
+  id: number
+  title: string
+  url: string
+  user_id: string
 }
 
-const BookmarkList: React.FC = () => {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+export default function BookmarkList() {
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+  const [title, setTitle] = useState('')
+  const [url, setUrl] = useState('')
 
-  // Get logged-in user from Supabase
-  const getUser = async () => {
+  useEffect(() => {
+    const loadBookmarks = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) return
+
+      const { data } = await supabase
+        .from('bookmarks')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('id', { ascending: false })
+
+      if (data) setBookmarks(data)
+    }
+
+    loadBookmarks()
+  }, [])
+
+  const handleAdd = async () => {
     const {
       data: { user },
-      error,
-    } = await supabase.auth.getUser();
-    if (error) {
-      console.error("Error fetching user:", error);
-      return;
-    }
-    if (user) setUserId(user.id);
-  };
+    } = await supabase.auth.getUser()
 
-  // Fetch bookmarks for logged-in user
-  const fetchBookmarks = async () => {
-    if (!userId) return;
+    if (!user) return
+    if (!title || !url) return alert('Fill all fields')
+
     const { data, error } = await supabase
-      .from("bookmarks")
-      .select("*")
-      .eq("user_id", userId)
-      .order("id", { ascending: false });
+      .from('bookmarks')
+      .insert({
+        title,
+        url,
+        user_id: user.id,
+      })
+      .select()
+      .single()
 
-    if (error) console.error("Error fetching bookmarks:", error);
-    else setBookmarks(data || []);
-  };
+    if (!error && data) {
+      setBookmarks((prev) => [data, ...prev]) // 🔥 instant
+      setTitle('')
+      setUrl('')
+    }
+  }
 
-  // Delete bookmark
-  const deleteBookmark = async (id: number) => {
-    const { error } = await supabase.from("bookmarks").delete().eq("id", id);
-    if (error) console.error("Error deleting bookmark:", error);
-    else setBookmarks(bookmarks.filter((b) => b.id !== id));
-  };
-
-  useEffect(() => {
-    getUser();
-  }, []);
-
-  useEffect(() => {
-    fetchBookmarks();
-  }, [userId]);
+  const handleDelete = async (id: number) => {
+    setBookmarks((prev) => prev.filter((b) => b.id !== id))
+    await supabase.from('bookmarks').delete().eq('id', id)
+  }
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-3">My Bookmarks</h2>
-      <ul>
-        {bookmarks.map((bookmark) => (
-          <li
-            key={bookmark.id}
-            className="flex justify-between items-center p-2 border-b"
-          >
+    <div>
+      {/* Single Form */}
+      <div className="flex gap-2 mb-6">
+        <input
+          type="text"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="border p-2 rounded w-1/3"
+        />
+        <input
+          type="url"
+          placeholder="URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="border p-2 rounded w-1/3"
+        />
+        <button
+          onClick={handleAdd}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Add
+        </button>
+      </div>
+
+      {bookmarks.length === 0 && (
+        <p className="text-gray-500">No bookmarks yet.</p>
+      )}
+
+      {bookmarks.map((bookmark) => (
+        <div
+          key={bookmark.id}
+          className="flex justify-between items-center border-b py-3"
+        >
+          <div>
+            <h3 className="font-semibold">{bookmark.title}</h3>
             <a
               href={bookmark.url}
               target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
+              className="text-blue-600 text-sm"
             >
-              {bookmark.title}
+              {bookmark.url}
             </a>
-            <button
-              onClick={() => deleteBookmark(bookmark.id)}
-              className="ml-4 text-red-500 font-bold hover:text-red-700"
-            >
-              X
-            </button>
-          </li>
-        ))}
-      </ul>
-      {bookmarks.length === 0 && <p>No bookmarks yet.</p>}
-    </div>
-  );
-};
+          </div>
 
-export default BookmarkList;
+          <button
+            onClick={() => handleDelete(bookmark.id)}
+            className="text-red-500 text-lg font-bold hover:text-red-700"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
